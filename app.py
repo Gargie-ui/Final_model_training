@@ -1,144 +1,126 @@
 import os
 import sys
+import io
 import json
 import flask
 import numpy as np
-import tensorflow as tf
 from PIL import Image
-import io
 
-# Ensure the workspace path is available for imports
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from src import config
-from src.threshold_tuning import predict_with_thresholds
+try:
+    import tflite_runtime.interpreter as tflite
+except ImportError:
+    import tensorflow.lite as tflite
 
 app = flask.Flask(__name__, template_folder='templates')
 
-# Global variables for model, classes, and thresholds
-model = None
+interpreter = None
+input_details = None
+output_details = None
 class_thresholds = None
-classes = config.CLASSES
+CLASSES = ["Atelectasis", "Infiltration", "Lung_Tumor", "No_Finding"]
 
-def load_model_safely():
-    """
-    Loads the trained model and per-class decision thresholds into memory.
-    """
-    global model, class_thresholds
-    model_path = os.path.join(config.MODELS_DIR, "final_model.keras")
-    if not os.path.exists(model_path):
-        raise FileNotFoundError(f"Trained model not found at {model_path}. Run training first.")
+def load_tflite_model():
+    global interpreter, input_details, output_details, class_thresholds
     
-    print(f"Loading Keras model from {model_path}...")
-    model = tf.keras.models.load_model(model_path)
-    print("Model loaded successfully and compiled.")
+    tflite_path = os.path.join("SELECTED_4CLASS_DATASET", "experiments", "exp_clahe_focal_threshold", "model.tflite")
+    if not os.path.exists(tflite_path):
+        tflite_path = os.path.join(os.path.dirname(__file__), "model.tflite")
+
+    print(f"Loading TFLite model from {tflite_path}...")
+    interpreter = tflite.Interpreter(model_path=tflite_path)
+    interpreter.allocate_tensors()
     
-    # Load per-class decision thresholds (tuned on validation set)
-    thresholds_path = os.path.join(config.MODELS_DIR, "class_thresholds.json")
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+    print("TFLite model loaded successfully.")
+
+    thresholds_path = os.path.join("SELECTED_4CLASS_DATASET", "experiments", "exp_clahe_focal_threshold", "class_thresholds.json")
     if os.path.exists(thresholds_path):
         with open(thresholds_path, "r") as f:
             class_thresholds = json.load(f)
-        print(f"Loaded per-class thresholds: {class_thresholds}")
     else:
-        print("WARNING: class_thresholds.json not found. Falling back to plain argmax predictions.")
-        class_thresholds = None
+        class_thresholds = {"Atelectasis": 0.30, "Infiltration": 0.15, "Lung_Tumor": 0.15, "No_Finding": 0.15}
 
-def preprocess_image(image_bytes):
-    """
-    Decodes the raw uploaded image bytes, applies CLAHE (if enabled),
-    converts to 3-channel RGB, resizes to target IMG_SIZE (224x224), and normalizes.
-    This exactly mirrors the preprocessing pipeline used in training.
-    """
-    # 1. Decode bytes into a 1-channel grayscale tensor
-    image = tf.image.decode_image(image_bytes, channels=1, expand_animations=False)
+def apply_clahe_numpy(img_np):
+    import cv2
+    if len(img_np.shape) == 3:
+        gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+    else:
+        gray = img_np
     
-    # 1.5 Apply CLAHE preprocessing BEFORE resizing and BEFORE preprocess_input
-    if getattr(config, "USE_CLAHE", False):
-        from src.preprocessing import apply_clahe_tf
-        image = apply_clahe_tf(image)
+    if gray.dtype != np.uint8:
+        gray = (gray * 255).astype(np.uint8)
         
-    # 2. Replicate grayscale channel to 3-channel RGB
-    image = tf.image.grayscale_to_rgb(image)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
+    rgb = cv2.cvtColor(enhanced, cv2.COLOR_GRAY2RGB)
+    return rgb
+
+def preprocess_image_bytes(image_bytes):
+    import cv2
+    img_pil = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+    img_np = np.array(img_pil)
     
-    # 3. Cast to float32
-    image = tf.cast(image, tf.float32)
+    # 1. Apply CLAHE
+    img_rgb = apply_clahe_numpy(img_np)
     
-    # 4. Resize to configuration size (224, 224)
-    image = tf.image.resize(image, (config.IMG_SIZE, config.IMG_SIZE))
+    # 2. Resize to 224x224
+    img_resized = cv2.resize(img_rgb, (224, 224))
     
-    # 5. Apply MobileNetV2-specific preprocessing (-1.0 to 1.0 scaling)
-    image = tf.keras.applications.mobilenet_v2.preprocess_input(image)
-    
-    # 6. Add batch dimension: shape becomes (1, 224, 224, 3)
-    image = tf.expand_dims(image, axis=0)
-    
-    return image
+    # 3. MobileNetV2 preprocessing (-1.0 to 1.0)
+    img_float = img_resized.astype(np.float32) / 127.5 - 1.0
+    input_tensor = np.expand_dims(img_float, axis=0)
+    return input_tensor
 
 @app.route('/')
 def index():
-    """
-    Serves the main testing frontend HTML page.
-    """
     return flask.render_template('index.html')
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    """
-    Accepts an uploaded image file, runs inference, and returns prediction
-    confidences with threshold-tuned final prediction.
-    """
-    if model is None:
-        return flask.jsonify({'error': 'Model is not loaded.'}), 500
+    if interpreter is None:
+        load_tflite_model()
         
     if 'file' not in flask.request.files:
-        return flask.jsonify({'error': 'No file part in request.'}), 400
+        return flask.jsonify({'error': 'No file part'}), 400
         
     file = flask.request.files['file']
     if file.filename == '':
-        return flask.jsonify({'error': 'No file selected.'}), 400
+        return flask.jsonify({'error': 'No file selected'}), 400
         
     try:
         image_bytes = file.read()
+        input_data = preprocess_image_bytes(image_bytes)
         
-        # Preprocess and execute prediction
-        processed_tensor = preprocess_image(image_bytes)
-        raw_probs = model.predict(processed_tensor)[0]
+        interpreter.set_tensor(input_details[0]['index'], input_data)
+        interpreter.invoke()
+        raw_probs = interpreter.get_tensor(output_details[0]['index'])[0]
         
-        # Use relative softmax probabilities (argmax) for unbiased multi-class prediction
-        max_idx = int(np.argmax(raw_probs))
-        predicted_class = classes[max_idx]
-        prediction_method = "softmax-argmax"
-        
-        # Format prediction percentages
-        results = []
-        for i, class_name in enumerate(classes):
-            results.append({
-                'class': class_name,
-                'probability': float(raw_probs[i])
-            })
+        # Apply threshold decision rule
+        thresh_list = [class_thresholds.get(c, 0.20) for c in CLASSES]
+        margins = raw_probs - np.array(thresh_list)
+        exceeded = margins >= 0
+        if np.any(exceeded):
+            masked = np.where(exceeded, margins, -np.inf)
+            pred_idx = int(np.argmax(masked))
+        else:
+            pred_idx = int(np.argmax(raw_probs))
             
-        # Sort results from highest probability to lowest
-        results = sorted(results, key=lambda x: x['probability'], reverse=True)
+        final_diagnosis = CLASSES[pred_idx]
+        confidences = {CLASSES[i]: float(raw_probs[i]) for i in range(len(CLASSES))}
         
         return flask.jsonify({
             'success': True,
-            'predicted_class': predicted_class,
-            'prediction_method': prediction_method,
-            'predictions': results
+            'prediction': final_diagnosis,
+            'confidence': float(raw_probs[pred_idx]),
+            'probabilities': confidences
         })
-        
     except Exception as e:
-        import traceback
-        traceback.print_exc()
         return flask.jsonify({'error': str(e)}), 500
 
+# Initialize on startup
+load_tflite_model()
+
 if __name__ == '__main__':
-    # Load model upon startup
-    try:
-        load_model_safely()
-    except Exception as e:
-        print(f"Error loading model: {e}")
-        print("Please ensure you have trained the model and saved final_model.keras before running.")
-        sys.exit(1)
-        
-    # Start local server on port 5000
-    app.run(host='127.0.0.1', port=5000, debug=False)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
