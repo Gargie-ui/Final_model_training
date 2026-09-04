@@ -1,0 +1,6 @@
+{
+    "Atelectasis": 0.3,
+    "Infiltration": 0.15,
+    "Lung_Tumor": 0.15,
+    "No_Finding": 0.15
+}
