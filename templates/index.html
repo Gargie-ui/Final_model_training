@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chest X-Ray Disease Classifier - AI Testing Portal</title>
+    <!-- Google Fonts: Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: rgba(17, 24, 39, 0.75);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.35);
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.2);
+            --warning: #f59e0b;
+            --warning-glow: rgba(245, 158, 11, 0.2);
+            --danger: #ef4444;
+            --danger-glow: rgba(239, 68, 68, 0.2);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --font-family: 'Outfit', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.1) 0px, transparent 50%);
+            color: var(--text-main);
+            font-family: var(--font-family);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem 1rem;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            z-index: 10;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #a5b4fc 0%, #818cf8 50%, #6366f1 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.5px;
+        }
+
+        header p {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            font-weight: 400;
+        }
+
+        .main-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            padding: 2.5rem;
+            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            gap: 2.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .main-card {
+                grid-template-columns: 1fr;
+                padding: 1.5rem;
+            }
+        }
+
+        .upload-section {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .drop-zone {
+            flex-grow: 1;
+            min-height: 280px;
+            border: 2px dashed rgba(99, 102, 241, 0.3);
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background: rgba(99, 102, 241, 0.02);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: var(--primary);
+            background: rgba(99, 102, 241, 0.06);
+            box-shadow: 0 0 25px var(--primary-glow);
+        }
+
+        .drop-zone input[type="file"] {
+            display: none;
+        }
+
+        .upload-icon {
+            width: 64px;
+            height: 64px;
+            color: var(--primary);
+            margin-bottom: 1.5rem;
+            filter: drop-shadow(0 4px 10px var(--primary-glow));
+            transition: transform 0.3s ease;
+        }
+
+        .drop-zone:hover .upload-icon {
+            transform: translateY(-5px);
+        }
+
+        .upload-prompt {
+            text-align: center;
+        }
+
+        .upload-prompt h3 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-prompt p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .image-preview-container {
+            display: none;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            background: #000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .image-preview {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            color: white;
+            border: none;
+            padding: 1rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 12px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(79, 70, 229, 0.5);
+            filter: brightness(1.1);
+        }
+
+        .btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-clear {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-main);
+            box-shadow: none;
+            display: none;
+        }
+
+        .btn-clear:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .results-section {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .empty-results {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 3rem 1rem;
+            border: 1px dashed rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.01);
+        }
+
+        .empty-results svg {
+            width: 48px;
+            height: 48px;
+            color: rgba(255, 255, 255, 0.1);
+            margin-bottom: 1rem;
+        }
+
+        .loading-container {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+            padding: 3rem 1rem;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(99, 102, 241, 0.1);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            filter: drop-shadow(0 0 10px var(--primary-glow));
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .prediction-results {
+            display: none;
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .predicted-class-badge {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(16, 185, 129, 0.15) 100%);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 14px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        .badge-label {
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge-value {
+            font-size: 1.2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #a5b4fc 0%, #10b981 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .badge-method {
+            margin-left: auto;
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            background: rgba(255, 255, 255, 0.05);
+            padding: 0.25rem 0.6rem;
+            border-radius: 6px;
+        }
+
+        .results-header {
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .results-header h3 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #a5b4fc;
+        }
+
+        .result-bar-item {
+            margin-bottom: 1.25rem;
+        }
+
+        .bar-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+            font-size: 0.95rem;
+            font-weight: 500;
+        }
+
+        .class-name {
+            color: var(--text-main);
+        }
+
+        .class-prob {
+            font-weight: 700;
+        }
+
+        .bar-container {
+            width: 100%;
+            height: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .bar-fill {
+            height: 100%;
+            width: 0;
+            border-radius: 10px;
+            transition: width 1s cubic-bezier(0.1, 0.8, 0.3, 1);
+            box-shadow: 0 0 10px var(--fill-glow);
+        }
+
+        .class-Atelectasis { background-color: var(--warning); --fill-glow: var(--warning-glow); }
+        .class-Infiltration { background-color: var(--primary); --fill-glow: var(--primary-glow); }
+        .class-Lung_Tumor { background-color: var(--danger); --fill-glow: var(--danger-glow); }
+        .class-No_Finding { background-color: var(--success); --fill-glow: var(--success-glow); }
+
+        footer {
+            margin-top: 2rem;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.25);
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Chest X-Ray Disease Classifier</h1>
+            <p>Upload a chest X-ray image to get instant AI predictions</p>
+        </header>
+
+        <main class="main-card">
+            <!-- Left Side: Upload Zone -->
+            <div class="upload-section">
+                <div class="drop-zone" id="dropZone">
+                    <input type="file" id="fileInput" accept="image/*">
+                    <svg class="upload-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                    </svg>
+                    <div class="upload-prompt" id="uploadPrompt">
+                        <h3>Drag & drop X-Ray image</h3>
+                        <p>or click to browse from files</p>
+                    </div>
+                    <div class="image-preview-container" id="previewContainer">
+                        <img class="image-preview" id="imagePreview" src="" alt="X-ray Preview">
+                    </div>
+                </div>
+
+                <button class="btn" id="btnAnalyze" disabled>
+                    <svg style="width:20px;height:20px;" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                    </svg>
+                    Analyze Image
+                </button>
+                <button class="btn btn-clear" id="btnClear">Clear Image</button>
+            </div>
+
+            <!-- Right Side: Predictions Panel -->
+            <div class="results-section">
+                <!-- Empty State -->
+                <div class="empty-results" id="emptyResults">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    <p>Upload and analyze a chest X-ray to display predictions and confidence scores.</p>
+                </div>
+
+                <!-- Loading State -->
+                <div class="loading-container" id="loadingContainer">
+                    <div class="spinner"></div>
+                    <p style="color: var(--text-muted); font-size: 0.95rem; font-weight: 500;">Running AI Inference...</p>
+                </div>
+
+                <!-- Prediction Results -->
+                <div class="prediction-results" id="predictionResults">
+                    <div class="predicted-class-badge" id="predictedClassBadge" style="display:none;">
+                        <div>
+                            <div class="badge-label">Final Prediction</div>
+                            <div class="badge-value" id="predictedClassName">—</div>
+                        </div>
+                        <div class="badge-method" id="predictionMethod"></div>
+                    </div>
+                    <div class="results-header">
+                        <h3>Class Probabilities</h3>
+                    </div>
+                    <div id="barsWrapper">
+                        <!-- Progress bars injected here dynamically -->
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            Local CPU Inference Model • DenseNet121 Backbone (Keras)
+        </footer>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const btnAnalyze = document.getElementById('btnAnalyze');
+        const btnClear = document.getElementById('btnClear');
+        const previewContainer = document.getElementById('previewContainer');
+        const imagePreview = document.getElementById('imagePreview');
+        const uploadPrompt = document.getElementById('uploadPrompt');
+        
+        const emptyResults = document.getElementById('emptyResults');
+        const loadingContainer = document.getElementById('loadingContainer');
+        const predictionResults = document.getElementById('predictionResults');
+        const barsWrapper = document.getElementById('barsWrapper');
+
+        let selectedFile = null;
+
+        // Click to open file picker
+        dropZone.addEventListener('click', () => {
+            if (!selectedFile) {
+                fileInput.click();
+            }
+        });
+
+        // File selected
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        // Drag events
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.classList.add('dragover');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.classList.remove('dragover');
+            }, false);
+        });
+
+        // Drop file
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        });
+
+        function handleFiles(files) {
+            if (files.length === 0) return;
+            selectedFile = files[0];
+
+            if (!selectedFile.type.startsWith('image/')) {
+                alert('Please upload an image file (PNG, JPG, JPEG).');
+                selectedFile = null;
+                return;
+            }
+
+            // Preview image
+            const reader = new FileReader();
+            reader.readAsDataURL(selectedFile);
+            reader.onloadend = () => {
+                imagePreview.src = reader.result;
+                previewContainer.style.display = 'flex';
+                uploadPrompt.style.display = 'none';
+                
+                btnAnalyze.disabled = false;
+                btnClear.style.display = 'flex';
+                
+                // Reset results panels
+                emptyResults.style.display = 'block';
+                predictionResults.style.display = 'none';
+                loadingContainer.style.display = 'none';
+            };
+        }
+
+        // Clear image
+        btnClear.addEventListener('click', () => {
+            selectedFile = null;
+            fileInput.value = '';
+            imagePreview.src = '';
+            previewContainer.style.display = 'none';
+            uploadPrompt.style.display = 'flex';
+            
+            btnAnalyze.disabled = true;
+            btnClear.style.display = 'none';
+            
+            emptyResults.style.display = 'block';
+            predictionResults.style.display = 'none';
+            loadingContainer.style.display = 'none';
+            barsWrapper.innerHTML = '';
+        });
+
+        // Analyze image
+        btnAnalyze.addEventListener('click', () => {
+            if (!selectedFile) return;
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            // UI updates
+            btnAnalyze.disabled = true;
+            btnClear.disabled = true;
+            emptyResults.style.display = 'none';
+            predictionResults.style.display = 'none';
+            loadingContainer.style.display = 'flex';
+
+            fetch('/predict', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                loadingContainer.style.display = 'none';
+                btnAnalyze.disabled = false;
+                btnClear.disabled = false;
+
+                if (data.success) {
+                    displayPredictions(data.predictions, data.predicted_class, data.prediction_method);
+                } else {
+                    alert('Prediction failed: ' + (data.error || 'Unknown error'));
+                    emptyResults.style.display = 'block';
+                }
+            })
+            .catch(error => {
+                loadingContainer.style.display = 'none';
+                btnAnalyze.disabled = false;
+                btnClear.disabled = false;
+                alert('Error connecting to server: ' + error.message);
+                emptyResults.style.display = 'block';
+            });
+        });
+
+        function displayPredictions(predictions, predictedClass, predictionMethod) {
+            barsWrapper.innerHTML = '';
+            predictionResults.style.display = 'block';
+
+            // Show the predicted class badge
+            const badge = document.getElementById('predictedClassBadge');
+            const nameEl = document.getElementById('predictedClassName');
+            const methodEl = document.getElementById('predictionMethod');
+            if (predictedClass) {
+                badge.style.display = 'flex';
+                nameEl.textContent = predictedClass.replace('_', ' ');
+                methodEl.textContent = predictionMethod === 'softmax-argmax' ? '📊 Softmax Consensus' : predictionMethod;
+            } else {
+                badge.style.display = 'none';
+            }
+
+            predictions.forEach(pred => {
+                const percentage = (pred.probability * 100).toFixed(2);
+                const displayLabel = pred.class.replace('_', ' '); // Replace underscore with space for display
+
+                const barItem = document.createElement('div');
+                barItem.className = 'result-bar-item';
+                
+                barItem.innerHTML = `
+                    <div class="bar-labels">
+                        <span class="class-name">${displayLabel}</span>
+                        <span class="class-prob">${percentage}%</span>
+                    </div>
+                    <div class="bar-container">
+                        <div class="bar-fill class-${pred.class}" id="bar-${pred.class}"></div>
+                    </div>
+                `;
+
+                barsWrapper.appendChild(barItem);
+
+                // Trigger width transition in next paint
+                setTimeout(() => {
+                    const fill = document.getElementById(`bar-${pred.class}`);
+                    if (fill) fill.style.width = `${percentage}%`;
+                }, 50);
+            });
+        }
+    </script>
+</body>
+</html>
